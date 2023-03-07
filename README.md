@@ -1,4 +1,6 @@
 # TerrainPainterAStar
-This will be a Unity project where I implement an a* pathfinding algortihm that reads the terrain's painted texture map and increases the travel cost on different terrain textures.
+This is a Unity project where the user can paint a map onto the Unity terrain and my A* algorithm calculates the fastest path through the different ground materials.
+There will be at least 3 different materials: normal ground, sand that slows movement, and rocky ground that blocks movement.
 
-I will start this project when I'm done with the other one.
+# WIP
+This is still a work in progress.
