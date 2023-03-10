@@ -3,10 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
-using UnityEditor.Experimental.GraphView;
 using UnityEngine;
-using UnityEngine.Events;
 
 namespace TerrainPainterAStar
 {
@@ -23,14 +20,14 @@ namespace TerrainPainterAStar
 
         //TODO: Turn the lists into queues for better performance
         private Dictionary<Vector2Int, AStarNode> nodes = new();
-        private SimplePriorityQueue<AStarNode, int> open = new();
+        private SimplePriorityQueue<AStarNode, float> open = new();
 
         private AStarNode start;
         private AStarNode end;
 
         private AStarNode current;
 
-        public SimplePriorityQueue<AStarNode, int> Open => open;
+        public SimplePriorityQueue<AStarNode, float> Open => open;
         public AStarNode Current => current;
 
         #region Events
@@ -52,10 +49,11 @@ namespace TerrainPainterAStar
         {
             nodeMoveSpeeds = nodesMoveSpeeds;
 
-            end = new AStarNode(endPoint, 0, IsTraversable(endPoint));
+            end = new AStarNode(endPoint, 0, nodeMoveSpeeds[endPoint.x, endPoint.y]);
             nodes.Add(end.Pos, end);
 
-            start = new AStarNode(startPoint, CalculateHCost(startPoint), IsTraversable(startPoint));
+            start = new AStarNode(startPoint, CalculateHCost(startPoint), nodeMoveSpeeds[startPoint.x, startPoint.y]);
+            start.GCost = 0;
             nodes.Add(start.Pos, start);
             open.EnqueueWithoutDuplicates(start, start.FCost);
         }
@@ -97,8 +95,6 @@ namespace TerrainPainterAStar
         /// </summary>
         private void ProcessCurrentNode()
         {
-            Debug.Log($"Processing node {current.Pos}");
-
             //Iterate through neighboring coordinates
             for (int i = -1; i <= 1; i++)
             {
@@ -107,17 +103,24 @@ namespace TerrainPainterAStar
                     //Skip the node itself
                     if (i == 0 && j == 0) continue;
 
+                    //Calculate neighbor pos and check that it is within world bounds
                     Vector2Int neighborOffset = new Vector2Int(i, j);
-                    AStarNode neighbor = GetOrCreateNode(current.Pos + neighborOffset);
+                    Vector2Int neighborPos = current.Pos + neighborOffset;
+                    //Debug.Log($"{IsValidIndex(neighborPos)} {neighborPos}");
+                    if (!IsValidIndex(neighborPos)) continue;
+
+                    //Get neighbor
+                    AStarNode neighbor = GetOrCreateNode(neighborPos);
 
                     //No need to check anything if node isn't traversable or if it has already been closed.
                     //It is impossible for there to be a shorter path to a closed node.
+                    //Debug.Log($"{neighbor.Traversable} {neighbor.Closed}");
                     if (!neighbor.Traversable || neighbor.Closed) continue;
 
-                    //Calculate the neighbor's gcost through this node
-                    bool diagonal = i == 0 || j == 0;
-                    int offsetLength = diagonal ? 14 : 10;
-                    int neighborNewGCost = current.GCost + offsetLength;
+                    //Calculate the neighbor's gcost through current node
+                    bool diagonal = i != 0 && j != 0;
+                    float offsetLength = diagonal ? 1.4f : 1;
+                    float neighborNewGCost = current.GCost + offsetLength / neighbor.MoveSpeed;
 
                     //Check if the current node is a better path to neighbor
                     if (neighborNewGCost < neighbor.GCost)
@@ -145,34 +148,26 @@ namespace TerrainPainterAStar
         {
             if(!nodes.TryGetValue(nodePos, out AStarNode node))
             {
-                node = new AStarNode(nodePos, CalculateHCost(nodePos), IsTraversable(nodePos));
+                node = new AStarNode(nodePos, CalculateHCost(nodePos), nodeMoveSpeeds[nodePos.x, nodePos.y]);
                 nodes.Add(node.Pos, node);
             }
 
             return node;
         }
 
-        /// <summary>
-        /// Checks if position is traversable.
-        /// </summary>
-        /// <param name="pos"></param>
-        /// <returns></returns>
-        private bool IsTraversable(Vector2Int pos)
+        private bool IsValidIndex(Vector2Int pos)
         {
-            if(pos.x < 0 || pos.y < 0 || pos.x > nodeMoveSpeeds.GetLength(0) - 1 || pos.y > nodeMoveSpeeds.GetLength(1) - 1)
-            {
-                Debug.LogError($"Node pos exceeds the world bounds {pos} {nodeMoveSpeeds.GetLength(0) - 1}" + $" {nodeMoveSpeeds.GetLength(1) - 1}");
-                return false;
-            }
-            
-            return nodeMoveSpeeds[pos.x, pos.y] != 0f;
+            return pos.x >= 0
+                && pos.y >= 0
+                && pos.x < nodeMoveSpeeds.GetLength(0)
+                && pos.y < nodeMoveSpeeds.GetLength(1);
         }
 
-        private int CalculateHCost(Vector2Int node)
+        private float CalculateHCost(Vector2Int node)
         {
             int dx = Math.Abs(node.x - end.Pos.x);
             int dy = Math.Abs(node.y - end.Pos.y);
-            return 10 * (dx + dy) + (14 - 2 * 10) * Math.Min(dx, dy);
+            return 1 * (dx + dy) + (1.4f - 2 * 1) * Math.Min(dx, dy);
         }
 
         #endregion

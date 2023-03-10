@@ -12,23 +12,24 @@ namespace TerrainPainterAStar
         public Vector2Int Pos { get; private set; }
 
         public bool Closed { get; set; }
-        public bool Traversable { get; private set; }
+        public float MoveSpeed { get; private set; }
+        public bool Traversable => MoveSpeed != 0;
 
         /// <summary>
         /// Estimated distance to end node.
         /// </summary>
-        public int HCost { get; private set; }
+        public float HCost { get; private set; }
         /// <summary>
         /// The graph distance to the node.
         /// </summary>
-        public int GCost { get; set; } = int.MaxValue;
-        public int FCost => HCost + GCost;
+        public float GCost { get; set; } = int.MaxValue;
+        public float FCost => HCost + GCost;
 
-        public AStarNode(Vector2Int pos, int hCost, bool traversable)
+        public AStarNode(Vector2Int pos, float hCost, float moveSpeed)
         {
             Pos = pos;
             HCost = hCost;
-            Traversable = traversable;
+            MoveSpeed = moveSpeed;
         }
 
         /// <summary>
