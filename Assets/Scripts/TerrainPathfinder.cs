@@ -21,6 +21,8 @@ namespace TerrainPainterAStar
         [SerializeField]
         private Terrain terrain;
 
+        private float pixelsPerUnitX, pixelsPerUnitY;
+
         private AStar aStar = default;
 
         #region Event Listeners
@@ -43,6 +45,10 @@ namespace TerrainPainterAStar
         private void Start()
         {
             Debug.Log("Starting AStar");
+
+            //Get base map pixels per unit
+            pixelsPerUnitX = terrain.terrainData.baseMapResolution / terrain.terrainData.size.x;
+            pixelsPerUnitY = terrain.terrainData.baseMapResolution / terrain.terrainData.size.z;
 
             //Convert 3D position to 2D because we want them from a top down perspective
             Vector2 startPointXZ = GetXZ(startPoint);
@@ -124,12 +130,8 @@ namespace TerrainPainterAStar
         /// <returns></returns>
         private Vector3 TransformToWorld(Vector2Int point)
         {
-            //Get base map pixels per unit
-            float scaleX = terrain.terrainData.baseMapResolution / terrain.terrainData.size.x;
-            float scaleY = terrain.terrainData.baseMapResolution / terrain.terrainData.size.z;
-
             //Position = terrain pos + (point pos * point pos scale factor)
-            return terrain.transform.position + new Vector3(point.x * scaleX, 0, point.y * scaleY);
+            return terrain.transform.position + new Vector3(point.x / pixelsPerUnitX, 0, point.y / pixelsPerUnitY);
         }
 
         /// <summary>
@@ -142,12 +144,8 @@ namespace TerrainPainterAStar
             //Transform the point to be relative to terrain corner
             point -= GetXZ(terrain.transform);
 
-            //Get base map pixels per unit
-            float scaleX = terrain.terrainData.baseMapResolution / terrain.terrainData.size.x;
-            float scaleY = terrain.terrainData.baseMapResolution / terrain.terrainData.size.z;
-
             //Round the point to the closest splat map coordinate.
-            return new Vector2Int((int)(point.x * scaleX), (int)(point.y * scaleY));
+            return new Vector2Int((int)(point.x * pixelsPerUnitX), (int)(point.y * pixelsPerUnitY));
         }
     }
 }
