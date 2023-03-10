@@ -126,6 +126,7 @@ namespace TerrainPainterAStar
                     if (neighborNewGCost < neighbor.GCost)
                     {
                         neighbor.GCost = neighborNewGCost;
+                        neighbor.Parent = current;
 
                         //Enqueue will return false if node is already in the queue, update the priority in that case
                         if (!open.EnqueueWithoutDuplicates(neighbor, neighbor.FCost))
@@ -167,7 +168,8 @@ namespace TerrainPainterAStar
         {
             int dx = Math.Abs(node.x - end.Pos.x);
             int dy = Math.Abs(node.y - end.Pos.y);
-            return 1 * (dx + dy) + (1.4f - 2 * 1) * Math.Min(dx, dy);
+            float dist = 1 * (dx + dy) + (1.4f - 2 * 1) * Math.Min(dx, dy);
+            return dist;
         }
 
         #endregion

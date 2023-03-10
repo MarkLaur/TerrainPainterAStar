@@ -121,8 +121,18 @@ namespace TerrainPainterAStar
 
             if(aStar.Current != null)
             {
-                Gizmos.color = Color.green;
+                //Draw current node
+                Gizmos.color = Color.blue;
                 Gizmos.DrawSphere(TransformToWorld(aStar.Current.Pos), 2);
+
+                //Draw current node path
+                Gizmos.color = Color.green;
+                AStarNode cur = aStar.Current;
+                while(cur != null)
+                {
+                    Gizmos.DrawSphere(TransformToWorld(cur.Pos), 2);
+                    cur = cur.Parent;
+                }
             }
         }
 
