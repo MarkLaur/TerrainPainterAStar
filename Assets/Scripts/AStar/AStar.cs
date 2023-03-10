@@ -20,15 +20,18 @@ namespace TerrainPainterAStar
 
         //TODO: Turn the lists into queues for better performance
         private Dictionary<Vector2Int, AStarNode> nodes = new();
-        private SimplePriorityQueue<AStarNode, float> open = new();
+        private SimplePriorityQueue<AStarNode, float> startOpen = new(), endOpen = new();
 
         private AStarNode start;
         private AStarNode end;
 
-        private AStarNode current;
+        private AStarNode startCurrent;
+        private AStarNode endCurrent;
 
-        public SimplePriorityQueue<AStarNode, float> Open => open;
-        public AStarNode Current => current;
+        public SimplePriorityQueue<AStarNode, float> StartOpen => startOpen;
+        public SimplePriorityQueue<AStarNode, float> EndOpen => endOpen;
+        public AStarNode StartCurrent => startCurrent;
+        public AStarNode EndCurrent => endCurrent;
 
         #region Events
 
@@ -49,13 +52,15 @@ namespace TerrainPainterAStar
         {
             nodeMoveSpeeds = nodesMoveSpeeds;
 
-            end = new AStarNode(endPoint, 0, nodeMoveSpeeds[endPoint.x, endPoint.y]);
+            end = new AStarNode(NodeAncestor.EndPoint, endPoint, CalculateHCost(endPoint, startPoint), nodeMoveSpeeds[endPoint.x, endPoint.y]);
+            end.GCost = 0;
             nodes.Add(end.Pos, end);
+            endOpen.EnqueueWithoutDuplicates(end, end.FCost);
 
-            start = new AStarNode(startPoint, CalculateHCost(startPoint), nodeMoveSpeeds[startPoint.x, startPoint.y]);
+            start = new AStarNode(NodeAncestor.StartPoint, startPoint, CalculateHCost(startPoint, endPoint), nodeMoveSpeeds[startPoint.x, startPoint.y]);
             start.GCost = 0;
             nodes.Add(start.Pos, start);
-            open.EnqueueWithoutDuplicates(start, start.FCost);
+            startOpen.EnqueueWithoutDuplicates(start, start.FCost);
         }
 
         #region Private Methods
@@ -65,20 +70,69 @@ namespace TerrainPainterAStar
             AStarResult result;
 
             //Get first element from the queue
-            if (!open.TryDequeue(out current))
+            if (!startOpen.TryDequeue(out startCurrent))
             {
                 result = new AStarResult(AStarResultMSG.OpenQueueEmpty, null);
                 OnAstarComplete(result);
                 return;
             }
 
-            //Main A* loop
-            while (current != end)
+            //Get first element from the queue
+            if (!endOpen.TryDequeue(out endCurrent))
             {
-                ProcessCurrentNode();
+                result = new AStarResult(AStarResultMSG.OpenQueueEmpty, null);
+                OnAstarComplete(result);
+                return;
+            }
+
+            List<AStarNode> finalPath;
+
+            //Main A* loop
+            while (true)
+            {
+                //Search exit conditions
+                if(startCurrent == end)
+                {
+                    finalPath = end.GetPath(true);
+                    break;
+                }
+                else if(endCurrent == start)
+                {
+                    finalPath = endCurrent.GetPath(false);
+                    break;
+                }
+                //Search can be stopped when the other frontier is found.
+                else if (endOpen.Contains(startCurrent))
+                {
+                    AStarNode end = FindOtherFrontier(startCurrent);
+                    AStarNode newEnd = end.RevertPath();
+                    AStarNode fullPath = startCurrent.AppendPath(newEnd);
+                    finalPath = fullPath.GetPath(true);
+                    break;
+                }
+                else if (startOpen.Contains(endCurrent))
+                {
+                    AStarNode start = FindOtherFrontier(endCurrent);
+                    AStarNode newEnd = endCurrent.RevertPath();
+                    AStarNode fullPath = start.AppendPath(newEnd);
+                    finalPath = fullPath.GetPath(true);
+                    break;
+                }
+
+                //TODO: run searches on different threads
+                ProcessNode(startCurrent, startOpen);
+                ProcessNode(endCurrent, endOpen);
 
                 //Get first element from the queue
-                if (!open.TryDequeue(out current))
+                if (!startOpen.TryDequeue(out startCurrent))
+                {
+                    result = new AStarResult(AStarResultMSG.OpenQueueEmpty, null);
+                    OnAstarComplete(result);
+                    return;
+                }
+
+                //Get first element from the queue
+                if (!endOpen.TryDequeue(out endCurrent))
                 {
                     result = new AStarResult(AStarResultMSG.OpenQueueEmpty, null);
                     OnAstarComplete(result);
@@ -86,14 +140,14 @@ namespace TerrainPainterAStar
                 }
             }
 
-            result = new AStarResult(AStarResultMSG.PathFound, end.GetPath());
+            result = new AStarResult(AStarResultMSG.PathFound, finalPath);
             OnAstarComplete(result);
         }
 
         /// <summary>
         /// Goes through the current node's neighbors and updates their gcosts.
         /// </summary>
-        private void ProcessCurrentNode()
+        private void ProcessNode(AStarNode node, SimplePriorityQueue<AStarNode, float> queue)
         {
             //Iterate through neighboring coordinates
             for (int i = -1; i <= 1; i++)
@@ -105,12 +159,12 @@ namespace TerrainPainterAStar
 
                     //Calculate neighbor pos and check that it is within world bounds
                     Vector2Int neighborOffset = new Vector2Int(i, j);
-                    Vector2Int neighborPos = current.Pos + neighborOffset;
+                    Vector2Int neighborPos = node.Pos + neighborOffset;
                     //Debug.Log($"{IsValidIndex(neighborPos)} {neighborPos}");
                     if (!IsValidIndex(neighborPos)) continue;
 
                     //Get neighbor
-                    AStarNode neighbor = GetOrCreateNode(neighborPos);
+                    AStarNode neighbor = GetOrCreateNode(neighborPos, node);
 
                     //No need to check anything if node isn't traversable or if it has already been closed.
                     //It is impossible for there to be a shorter path to a closed node.
@@ -120,24 +174,78 @@ namespace TerrainPainterAStar
                     //Calculate the neighbor's gcost through current node
                     bool diagonal = i != 0 && j != 0;
                     float offsetLength = diagonal ? 1.4f : 1;
-                    float neighborNewGCost = current.GCost + offsetLength / neighbor.MoveSpeed;
+                    float neighborNewGCost = node.GCost + offsetLength / neighbor.MoveSpeed;
 
                     //Check if the current node is a better path to neighbor
                     if (neighborNewGCost < neighbor.GCost)
                     {
                         neighbor.GCost = neighborNewGCost;
-                        neighbor.Parent = current;
+                        neighbor.Parent = node;
 
                         //Enqueue will return false if node is already in the queue, update the priority in that case
-                        if (!open.EnqueueWithoutDuplicates(neighbor, neighbor.FCost))
+                        if (!queue.EnqueueWithoutDuplicates(neighbor, neighbor.FCost))
                         {
-                            open.UpdatePriority(neighbor, neighbor.FCost);
+                            queue.UpdatePriority(neighbor, neighbor.FCost);
                         }
                     }
                 }
             }
 
-            current.Closed = true;
+            node.Closed = true;
+        }
+
+        /// <summary>
+        /// Returns the best adjacent node from the other bidirectional search frontier.
+        /// </summary>
+        /// <param name="node"></param>
+        private AStarNode FindOtherFrontier(AStarNode node)
+        {
+            AStarNode bestNeighbor = null;
+
+            //Iterate through neighboring coordinates
+            for (int i = -1; i <= 1; i++)
+            {
+                for (int j = -1; j <= 1; j++)
+                {
+                    //Skip the node itself
+                    if (i == 0 && j == 0) continue;
+
+                    //Calculate neighbor pos and check that it is within world bounds
+                    Vector2Int neighborOffset = new Vector2Int(i, j);
+                    Vector2Int neighborPos = node.Pos + neighborOffset;
+                    //Debug.Log($"{IsValidIndex(neighborPos)} {neighborPos}");
+                    if (!IsValidIndex(neighborPos)) continue;
+
+                    //Get neighbor
+                    AStarNode neighbor = GetNode(neighborPos);
+
+                    //Ignore non traversable nodes and nodes that are from this node's frontier
+                    if (!neighbor.Traversable || neighbor.Ancestor == node.Ancestor) continue;
+
+                    //Update best neighbor
+                    if(bestNeighbor == null || neighbor.GCost < bestNeighbor.GCost) bestNeighbor = neighbor;
+                }
+            }
+
+            if (bestNeighbor == null) throw new Exception("Couldn't find a neighbor belonging to other frontier");
+
+            return bestNeighbor;
+        }
+
+        /// <summary>
+        /// Finds and existing node.
+        /// </summary>
+        /// <param name="nodePos"></param>
+        /// <returns></returns>
+        /// <exception cref="Exception"></exception>
+        private AStarNode GetNode(Vector2Int nodePos)
+        {
+            if (!nodes.TryGetValue(nodePos, out AStarNode node))
+            {
+                throw new Exception("Couldn't find node at that position.");
+            }
+
+            return node;
         }
 
         /// <summary>
@@ -145,11 +253,22 @@ namespace TerrainPainterAStar
         /// </summary>
         /// <param name="nodePos"></param>
         /// <returns></returns>
-        private AStarNode GetOrCreateNode(Vector2Int nodePos)
+        private AStarNode GetOrCreateNode(Vector2Int nodePos, AStarNode parent)
         {
             if(!nodes.TryGetValue(nodePos, out AStarNode node))
             {
-                node = new AStarNode(nodePos, CalculateHCost(nodePos), nodeMoveSpeeds[nodePos.x, nodePos.y]);
+                //Figure out the goal node of this tree
+                AStarNode goal;
+                if(parent.Ancestor == NodeAncestor.StartPoint)
+                {
+                    goal = end;
+                }
+                else
+                {
+                    goal = start;
+                }
+
+                node = new AStarNode(parent.Ancestor, nodePos, CalculateHCost(nodePos, goal.Pos), nodeMoveSpeeds[nodePos.x, nodePos.y]);
                 nodes.Add(node.Pos, node);
             }
 
@@ -164,10 +283,10 @@ namespace TerrainPainterAStar
                 && pos.y < nodeMoveSpeeds.GetLength(1);
         }
 
-        private float CalculateHCost(Vector2Int node)
+        private float CalculateHCost(Vector2Int node, Vector2Int endNode)
         {
-            int dx = Math.Abs(node.x - end.Pos.x);
-            int dy = Math.Abs(node.y - end.Pos.y);
+            int dx = Math.Abs(node.x - endNode.x);
+            int dy = Math.Abs(node.y - endNode.y);
             float dist = 1 * (dx + dy) + (1.4f - 2 * 1) * Math.Min(dx, dy);
             return dist;
         }
