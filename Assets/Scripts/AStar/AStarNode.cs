@@ -17,14 +17,14 @@ namespace TerrainPainterAStar
         /// <summary>
         /// Estimated distance to end node.
         /// </summary>
-        public float HCost { get; private set; }
+        public int HCost { get; private set; }
         /// <summary>
         /// The graph distance to the node.
         /// </summary>
         public int GCost { get; set; } = int.MaxValue;
-        public float FCost => HCost + GCost;
+        public int FCost => HCost + GCost;
 
-        public AStarNode(Vector2Int pos, float hCost, bool traversable)
+        public AStarNode(Vector2Int pos, int hCost, bool traversable)
         {
             Pos = pos;
             HCost = hCost;

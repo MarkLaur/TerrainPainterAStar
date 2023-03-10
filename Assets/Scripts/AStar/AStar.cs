@@ -1,3 +1,4 @@
+using Priority_Queue;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -22,14 +23,14 @@ namespace TerrainPainterAStar
 
         //TODO: Turn the lists into queues for better performance
         private Dictionary<Vector2Int, AStarNode> nodes = new();
-        private List<AStarNode> open = new();
+        private SimplePriorityQueue<AStarNode, int> open = new();
 
         private AStarNode start;
         private AStarNode end;
 
         private AStarNode current;
 
-        public List<AStarNode> Open => open;
+        public SimplePriorityQueue<AStarNode, int> Open => open;
         public AStarNode Current => current;
 
         #region Events
@@ -56,7 +57,7 @@ namespace TerrainPainterAStar
 
             start = new AStarNode(startPoint, CalculateHCost(startPoint), IsTraversable(startPoint));
             nodes.Add(start.Pos, start);
-            open.Add(start);
+            open.EnqueueWithoutDuplicates(start, start.FCost);
         }
 
         #region Private Methods
@@ -65,26 +66,21 @@ namespace TerrainPainterAStar
         {
             AStarResult result;
 
-            if(!TryGetMinOpen(out current))
+            //Get first element from the queue
+            if (!open.TryDequeue(out current))
             {
                 result = new AStarResult(AStarResultMSG.OpenQueueEmpty, null);
                 OnAstarComplete(result);
                 return;
             }
 
-            while (true)
+            //Main A* loop
+            while (current != end)
             {
-                if (current == end)
-                {
-                    result = new AStarResult(AStarResultMSG.PathFound, end.GetPath());
-                    break;
-                }
-
-                Debug.Log($"Processing node {current.Pos}");
                 ProcessCurrentNode();
-                Close(current);
 
-                if (!TryGetMinOpen(out current))
+                //Get first element from the queue
+                if (!open.TryDequeue(out current))
                 {
                     result = new AStarResult(AStarResultMSG.OpenQueueEmpty, null);
                     OnAstarComplete(result);
@@ -92,6 +88,7 @@ namespace TerrainPainterAStar
                 }
             }
 
+            result = new AStarResult(AStarResultMSG.PathFound, end.GetPath());
             OnAstarComplete(result);
         }
 
@@ -100,8 +97,10 @@ namespace TerrainPainterAStar
         /// </summary>
         private void ProcessCurrentNode()
         {
+            Debug.Log($"Processing node {current.Pos}");
+
             //Iterate through neighboring coordinates
-            for(int i = -1; i <= 1; i++)
+            for (int i = -1; i <= 1; i++)
             {
                 for (int j = -1; j <= 1; j++)
                 {
@@ -124,16 +123,17 @@ namespace TerrainPainterAStar
                     if (neighborNewGCost < neighbor.GCost)
                     {
                         neighbor.GCost = neighborNewGCost;
-                        if (!open.Contains(neighbor)) open.Add(neighbor);
-                        //TODO: update neighbor queue value if it is already in queue.
+
+                        //Enqueue will return false if node is already in the queue, update the priority in that case
+                        if (!open.EnqueueWithoutDuplicates(neighbor, neighbor.FCost))
+                        {
+                            open.UpdatePriority(neighbor, neighbor.FCost);
+                        }
                     }
                 }
             }
-        }
 
-        private void Close(AStarNode node)
-        {
-            node.Closed = true;
+            current.Closed = true;
         }
 
         /// <summary>
@@ -168,30 +168,11 @@ namespace TerrainPainterAStar
             return nodeMoveSpeeds[pos.x, pos.y] != 0f;
         }
 
-        private float CalculateHCost(Vector2Int node)
+        private int CalculateHCost(Vector2Int node)
         {
             int dx = Math.Abs(node.x - end.Pos.x);
             int dy = Math.Abs(node.y - end.Pos.y);
-            return 10 * (dx + dy) + (14 - 2 * 10) * MathF.Min(dx, dy);
-        }
-
-        private bool TryGetMinOpen(out AStarNode minNode)
-        {
-            if (open.Count == 0)
-            {
-                minNode = null;
-                return false;
-            }
-
-            minNode = open[0];
-
-            foreach(AStarNode node in open)
-            {
-                if (node.FCost < minNode.FCost) minNode = node;
-            }
-
-            open.Remove(minNode);
-            return true;
+            return 10 * (dx + dy) + (14 - 2 * 10) * Math.Min(dx, dy);
         }
 
         #endregion
