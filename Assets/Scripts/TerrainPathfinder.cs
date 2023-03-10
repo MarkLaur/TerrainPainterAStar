@@ -1,8 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using Unity.VisualScripting;
-using UnityEditor.Experimental.GraphView;
+using System.IO;
 using UnityEngine;
 
 namespace TerrainPainterAStar
@@ -54,24 +52,40 @@ namespace TerrainPainterAStar
             Vector2 startPointXZ = GetXZ(startPoint);
             Vector2 endpointXZ = GetXZ(endPoint);
 
-            //TODO: Get start and end points relative to move speed array 0,0 pos
+            //Transform world points to texture array space
             Vector2Int start = TransformToTerrainMap(startPointXZ);
             Vector2Int end = TransformToTerrainMap(endpointXZ);
 
             TerrainData td = terrain.terrainData;
             int basemapRes = td.baseMapResolution;
             float[,] nodeMoveSpeeds = new float[basemapRes, basemapRes];
+            Color[] pixels = td.alphamapTextures[0].GetPixels();
 
-            for(int i = 0; i < basemapRes; i++)
+            //Read terrain texture map and set move speed array values
+            for (int i = 0; i < basemapRes; i++)
             {
                 for(int j = 0; j < basemapRes; j++)
                 {
-                    //TODO: read terrain texture map and calculate move speed from material blend value
-                    nodeMoveSpeeds[i, j] = 1f;
+                    //TODO: implement support for arbitrary layer count
+
+                    //Add weighted move speeds
+                    float weightedMoveSpeed =
+                        pixels[i + basemapRes * j].r * settings.LayerMoveSpeeds[0]
+                        + pixels[i + basemapRes * j].g * settings.LayerMoveSpeeds[1]
+                        + pixels[i + basemapRes * j].b * settings.LayerMoveSpeeds[2];
+
+                    //Normalize the move speed
+                    float sum =
+                        pixels[i + basemapRes * j].r
+                        + pixels[i + basemapRes * j].g
+                        + pixels[i + basemapRes * j].b;
+                    weightedMoveSpeed /= sum;
+
+                    nodeMoveSpeeds[i, j] = weightedMoveSpeed;
                 }
             }
 
-            //Star astar
+            //Start astar
             aStar = new AStar(start, end, nodeMoveSpeeds);
             aStar.OnAstarComplete += AStarCompleteListener;
             aStar.Start();
@@ -105,8 +119,11 @@ namespace TerrainPainterAStar
                 Gizmos.DrawSphere(TransformToWorld(node.Pos), 2);
             }
 
-            Gizmos.color = Color.green;
-            Gizmos.DrawSphere(TransformToWorld(aStar.Current.Pos), 2);
+            if(aStar.Current != null)
+            {
+                Gizmos.color = Color.green;
+                Gizmos.DrawSphere(TransformToWorld(aStar.Current.Pos), 2);
+            }
         }
 
         private void OnApplicationQuit()

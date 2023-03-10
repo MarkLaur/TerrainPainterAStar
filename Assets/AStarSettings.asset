@@ -12,5 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4e0b176a246b71842a717f327d8d857c, type: 3}
   m_Name: AStarSettings
   m_EditorClassIdentifier: 
-  grassMoveSpeed: 1
-  sandMoveSpeed: 0.5
+  layerMoveSpeeds:
+  - 0
+  - 1
+  - 0.1
